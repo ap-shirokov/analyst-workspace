@@ -12,6 +12,7 @@ import SqlGenTool from '@/pages/SqlGenTool';
 import OpenApiGenTool from '@/pages/OpenApiGenTool';
 import UserStoryTool from '@/pages/UserStoryTool';
 import AcceptanceTool from '@/pages/AcceptanceTool';
+import HistoryTool from '@/pages/HistoryTool';
 import NotFound from '@/pages/not-found';
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/openapi-gen" component={OpenApiGenTool} />
             <Route path="/user-story" component={UserStoryTool} />
             <Route path="/acceptance" component={AcceptanceTool} />
+            <Route path="/history" component={HistoryTool} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

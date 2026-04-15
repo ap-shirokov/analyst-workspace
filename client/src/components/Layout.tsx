@@ -15,6 +15,7 @@ import {
   Moon,
   Sun,
   Layers,
+  History,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -42,6 +43,12 @@ const tools = [
       { path: '/openapi-gen', label: 'OpenAPI Generator', icon: FileJson, badge: 'AI' },
       { path: '/user-story', label: 'User Story / Use Case', icon: BookOpen, badge: 'AI' },
       { path: '/acceptance', label: 'Acceptance Criteria', icon: CheckSquare, badge: 'AI' },
+    ],
+  },
+  {
+    group: 'Данные',
+    items: [
+      { path: '/history', label: 'История', icon: History, badge: null },
     ],
   },
 ];

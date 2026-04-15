@@ -1,16 +1,10 @@
-import { useState } from 'react';
 import { Wand2, Copy, Trash2, CheckSquare } from 'lucide-react';
 import MarkdownOutput from '@/components/MarkdownOutput';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useLlm } from '@/hooks/useLlm';
+import { usePersisted } from '@/hooks/usePersisted';
 import { cn } from '@/lib/utils';
-
-// Persisted state
-let _story = 'Как зарегистрированный пользователь, я хочу восстановить пароль через email, чтобы получить доступ к аккаунту если забыл пароль';
-let _format: 'gherkin' | 'checklist' | 'both' = 'gherkin';
-let _output = '';
-let _context = '';
 
 const EXAMPLES = [
   'Как пользователь, я хочу фильтровать список товаров по цене и категории',
@@ -20,10 +14,10 @@ const EXAMPLES = [
 ];
 
 export default function AcceptanceTool() {
-  const [story, setStory] = useState(_story);
-  const [format, setFormat] = useState<'gherkin' | 'checklist' | 'both'>(_format);
-  const [context, setContext] = useState(_context);
-  const [output, setOutput] = useState(_output);
+  const [story, setStory] = usePersisted<string>('acceptance:story', 'Как зарегистрированный пользователь, я хочу восстановить пароль через email, чтобы получить доступ к аккаунту если забыл пароль');
+  const [format, setFormat] = usePersisted<'gherkin' | 'checklist' | 'both'>('acceptance:format', 'gherkin');
+  const [context, setContext] = usePersisted<string>('acceptance:context', '');
+  const [output, setOutput] = usePersisted<string>('acceptance:output', '');
   const { toast } = useToast();
   const { loading, error, generate } = useLlm({ endpoint: '/api/generate/acceptance' });
 
@@ -32,7 +26,6 @@ export default function AcceptanceTool() {
     try {
       const result = await generate({ story, format, context });
       setOutput(result);
-      _output = result;
     } catch {}
   };
 
@@ -45,9 +38,6 @@ export default function AcceptanceTool() {
     setStory('');
     setOutput('');
     setContext('');
-    _story = '';
-    _output = '';
-    _context = '';
   };
 
   return (
@@ -85,7 +75,7 @@ export default function AcceptanceTool() {
               ] as const).map(({ value, label }) => (
                 <button
                   key={value}
-                  onClick={() => { setFormat(value); _format = value; }}
+                  onClick={() => setFormat(value)}
                   className={cn(
                     'px-2.5 py-1 rounded text-xs transition-colors',
                     format === value
@@ -106,7 +96,7 @@ export default function AcceptanceTool() {
                 className="code-textarea"
                 style={{ minHeight: '90px', fontFamily: 'inherit', fontSize: '13px' }}
                 value={story}
-                onChange={(e) => { setStory(e.target.value); _story = e.target.value; }}
+                onChange={(e) => setStory(e.target.value)}
                 placeholder="Как [роль], я хочу [действие], чтобы [ценность]"
                 spellCheck={false}
                 data-testid="ac-story"
@@ -122,7 +112,7 @@ export default function AcceptanceTool() {
                 className="code-textarea"
                 style={{ minHeight: '70px', fontFamily: 'inherit', fontSize: '13px' }}
                 value={context}
-                onChange={(e) => { setContext(e.target.value); _context = e.target.value; }}
+                onChange={(e) => setContext(e.target.value)}
                 placeholder="Бизнес-правила, ограничения, технические детали, edge cases..."
                 spellCheck={false}
                 data-testid="ac-context"
@@ -134,7 +124,7 @@ export default function AcceptanceTool() {
               {EXAMPLES.map((ex) => (
                 <button
                   key={ex}
-                  onClick={() => { setStory(ex); _story = ex; }}
+                  onClick={() => setStory(ex)}
                   className="w-full text-left text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded hover:bg-muted/50 transition-colors"
                   style={{ whiteSpace: 'normal' }}
                 >

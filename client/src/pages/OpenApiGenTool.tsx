@@ -1,16 +1,10 @@
-import { useState } from 'react';
 import { Wand2, Copy, Trash2, FileJson } from 'lucide-react';
-import MarkdownOutput from '@/components/MarkdownOutput';
+import CodeEditor from '@/components/CodeEditor';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useLlm } from '@/hooks/useLlm';
+import { usePersisted } from '@/hooks/usePersisted';
 import { cn } from '@/lib/utils';
-
-// Persisted state
-let _desc = 'REST API для управления задачами (ToDo). Операции: создание, получение списка, обновление статуса, удаление. Задача содержит: id, title, description, status (todo/in_progress/done), priority (low/medium/high), createdAt, updatedAt';
-let _version: '3.0' | '3.1' = '3.0';
-let _output = '';
-let _format: 'yaml' | 'json' = 'yaml';
 
 const EXAMPLES = [
   'API для аутентификации: регистрация, логин, обновление токена, выход',
@@ -20,10 +14,10 @@ const EXAMPLES = [
 ];
 
 export default function OpenApiGenTool() {
-  const [desc, setDesc] = useState(_desc);
-  const [version, setVersion] = useState<'3.0' | '3.1'>(_version);
-  const [output, setOutput] = useState(_output);
-  const [format, setFormat] = useState<'yaml' | 'json'>(_format);
+  const [desc, setDesc] = usePersisted<string>('openapi:desc', 'REST API для управления задачами (ToDo). Операции: создание, получение списка, обновление статуса, удаление. Задача содержит: id, title, description, status (todo/in_progress/done), priority (low/medium/high), createdAt, updatedAt');
+  const [version, setVersion] = usePersisted<'3.0' | '3.1'>('openapi:version', '3.0');
+  const [output, setOutput] = usePersisted<string>('openapi:output', '');
+  const [format, setFormat] = usePersisted<'yaml' | 'json'>('openapi:format', 'yaml');
   const { toast } = useToast();
   const { loading, error, generate } = useLlm({ endpoint: '/api/generate/openapi' });
 
@@ -32,7 +26,6 @@ export default function OpenApiGenTool() {
     try {
       const result = await generate({ description: desc, version, format });
       setOutput(result);
-      _output = result;
     } catch {}
   };
 
@@ -44,9 +37,14 @@ export default function OpenApiGenTool() {
   const clear = () => {
     setDesc('');
     setOutput('');
-    _desc = '';
-    _output = '';
   };
+
+  // Strip markdown code fences if model wraps in them
+  const displayCode = output
+    ? output.replace(/^```(yaml|json|yml)?\n?/i, '').replace(/\n?```$/i, '').trim()
+    : '';
+
+  const editorLang = format === 'json' ? 'json' : 'yaml';
 
   return (
     <div className="tool-container">
@@ -80,7 +78,7 @@ export default function OpenApiGenTool() {
                 {(['3.0', '3.1'] as const).map((v) => (
                   <button
                     key={v}
-                    onClick={() => { setVersion(v); _version = v; }}
+                    onClick={() => setVersion(v)}
                     className={cn(
                       'px-2.5 py-1 rounded text-xs transition-colors',
                       version === v
@@ -97,7 +95,7 @@ export default function OpenApiGenTool() {
                 {(['yaml', 'json'] as const).map((f) => (
                   <button
                     key={f}
-                    onClick={() => { setFormat(f); _format = f; }}
+                    onClick={() => setFormat(f)}
                     className={cn(
                       'px-2.5 py-1 rounded text-xs transition-colors uppercase',
                       format === f
@@ -117,7 +115,7 @@ export default function OpenApiGenTool() {
             <textarea
               className="code-textarea flex-1 min-h-[140px]"
               value={desc}
-              onChange={(e) => { setDesc(e.target.value); _desc = e.target.value; }}
+              onChange={(e) => setDesc(e.target.value)}
               placeholder="Опишите API: назначение, ресурсы, операции, модели данных...
 Например: API для блога — посты, комментарии, теги, авторы"
               spellCheck={false}
@@ -130,7 +128,7 @@ export default function OpenApiGenTool() {
               {EXAMPLES.map((ex) => (
                 <button
                   key={ex}
-                  onClick={() => { setDesc(ex); _desc = ex; }}
+                  onClick={() => setDesc(ex)}
                   className="w-full text-left text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded hover:bg-muted/50 transition-colors"
                   style={{ whiteSpace: 'normal', textAlign: 'left' }}
                 >
@@ -186,10 +184,15 @@ export default function OpenApiGenTool() {
             {error && !loading && (
               <div className="p-4 m-3 rounded-md badge-error text-xs">Ошибка: {error}</div>
             )}
-            {!loading && !error && output && (
-              <MarkdownOutput content={output} />
+            {!loading && !error && displayCode && (
+              <CodeEditor
+                value={displayCode}
+                lang={editorLang}
+                readOnly
+                minHeight="100%"
+              />
             )}
-            {!loading && !error && !output && (
+            {!loading && !error && !displayCode && (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
                 <FileJson size={32} className="opacity-20" />
                 <p className="text-sm">Опишите API и нажмите «Сгенерировать»</p>

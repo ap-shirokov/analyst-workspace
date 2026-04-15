@@ -1,16 +1,10 @@
-import { useState } from 'react';
 import { Wand2, Copy, Trash2, BookOpen } from 'lucide-react';
 import MarkdownOutput from '@/components/MarkdownOutput';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useLlm } from '@/hooks/useLlm';
+import { usePersisted } from '@/hooks/usePersisted';
 import { cn } from '@/lib/utils';
-
-// Persisted state
-let _desc = 'Пользователь должен иметь возможность восстановить пароль через email, получить одноразовую ссылку и установить новый пароль';
-let _type: 'story' | 'usecase' | 'both' = 'both';
-let _role = 'Пользователь системы';
-let _output = '';
 
 const EXAMPLES = [
   'Пользователь хочет отфильтровать список заказов по дате и статусу',
@@ -22,10 +16,10 @@ const EXAMPLES = [
 const ROLES = ['Пользователь системы', 'Администратор', 'Клиент', 'Менеджер', 'Аналитик', 'Оператор'];
 
 export default function UserStoryTool() {
-  const [desc, setDesc] = useState(_desc);
-  const [type, setType] = useState<'story' | 'usecase' | 'both'>(_type);
-  const [role, setRole] = useState(_role);
-  const [output, setOutput] = useState(_output);
+  const [desc, setDesc] = usePersisted<string>('userstory:desc', 'Пользователь должен иметь возможность восстановить пароль через email, получить одноразовую ссылку и установить новый пароль');
+  const [type, setType] = usePersisted<'story' | 'usecase' | 'both'>('userstory:type', 'both');
+  const [role, setRole] = usePersisted<string>('userstory:role', 'Пользователь системы');
+  const [output, setOutput] = usePersisted<string>('userstory:output', '');
   const { toast } = useToast();
   const { loading, error, generate } = useLlm({ endpoint: '/api/generate/user-story' });
 
@@ -34,7 +28,6 @@ export default function UserStoryTool() {
     try {
       const result = await generate({ description: desc, type, role });
       setOutput(result);
-      _output = result;
     } catch {}
   };
 
@@ -46,8 +39,6 @@ export default function UserStoryTool() {
   const clear = () => {
     setDesc('');
     setOutput('');
-    _desc = '';
-    _output = '';
   };
 
   return (
@@ -85,7 +76,7 @@ export default function UserStoryTool() {
               ] as const).map(({ value, label }) => (
                 <button
                   key={value}
-                  onClick={() => { setType(value); _type = value; }}
+                  onClick={() => setType(value)}
                   className={cn(
                     'px-2.5 py-1 rounded text-xs transition-colors',
                     type === value
@@ -103,7 +94,7 @@ export default function UserStoryTool() {
               <span className="text-xs text-muted-foreground shrink-0">Роль актора:</span>
               <input
                 value={role}
-                onChange={(e) => { setRole(e.target.value); _role = e.target.value; }}
+                onChange={(e) => setRole(e.target.value)}
                 className="flex-1 min-w-[160px] h-7 px-2 text-xs rounded border border-input bg-background"
                 placeholder="Кто является актором?"
                 data-testid="role-input"
@@ -113,7 +104,7 @@ export default function UserStoryTool() {
               {ROLES.map((r) => (
                 <button
                   key={r}
-                  onClick={() => { setRole(r); _role = r; }}
+                  onClick={() => setRole(r)}
                   className={cn(
                     'px-2 py-0.5 rounded-full text-[11px] transition-colors border',
                     role === r
@@ -132,7 +123,7 @@ export default function UserStoryTool() {
             <textarea
               className="code-textarea flex-1 min-h-[120px]"
               value={desc}
-              onChange={(e) => { setDesc(e.target.value); _desc = e.target.value; }}
+              onChange={(e) => setDesc(e.target.value)}
               placeholder="Опишите функцию или бизнес-требование на естественном языке..."
               spellCheck={false}
               style={{ fontFamily: 'inherit', fontSize: '13px' }}
@@ -144,7 +135,7 @@ export default function UserStoryTool() {
               {EXAMPLES.map((ex) => (
                 <button
                   key={ex}
-                  onClick={() => { setDesc(ex); _desc = ex; }}
+                  onClick={() => setDesc(ex)}
                   className="w-full text-left text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded hover:bg-muted/50 transition-colors"
                   style={{ whiteSpace: 'normal' }}
                 >
