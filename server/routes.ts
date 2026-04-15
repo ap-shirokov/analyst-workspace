@@ -3,6 +3,7 @@ import type { Server } from 'http';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { storage } from './storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +38,21 @@ async function askOllama(systemPrompt: string, userPrompt: string, model?: strin
   const content = data?.message?.content;
   if (!content) throw new Error('Ollama вернул пустой ответ');
   return content;
+}
+
+/** Save a generation to history DB. Swallows errors so it never breaks the main flow. */
+function saveHistory(tool: string, title: string, input: object, output: string) {
+  try {
+    storage.addHistory({
+      tool,
+      title,
+      input: JSON.stringify(input),
+      output,
+      createdAt: Date.now(),
+    });
+  } catch (e) {
+    console.error('History save error:', e);
+  }
 }
 
 export function registerRoutes(httpServer: Server, app: Express) {
@@ -77,6 +93,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 - После SQL добавь короткое объяснение логики (2-4 строки)`;
 
       const result = await askOllama(system, `Задача: ${description}`, model);
+      saveHistory('sql', description.slice(0, 80), { description, dialect }, result);
       res.json({ result });
     } catch (e: any) {
       console.error('SQL gen error:', e.message);
@@ -106,6 +123,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 - Следуй REST-принципам именования`;
 
       const result = await askOllama(system, `Описание API: ${description}\nФормат вывода: ${format.toUpperCase()}`, model);
+      saveHistory('openapi', description.slice(0, 80), { description, version, format }, result);
       res.json({ result });
     } catch (e: any) {
       console.error('OpenAPI gen error:', e.message);
@@ -154,6 +172,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         `Роль актора: ${role}\nОписание: ${description}\n${typeMap[type] || typeMap.both}`,
         model,
       );
+      saveHistory('user-story', description.slice(0, 80), { description, type, role }, result);
       res.json({ result });
     } catch (e: any) {
       console.error('User story gen error:', e.message);
@@ -194,9 +213,44 @@ ${format === 'checklist' || format === 'both' ? `Чеклист-формат:
 
       const prompt = `User Story: ${story}${context ? `\n\nКонтекст/ограничения: ${context}` : ''}\n\n${formatMap[format] || formatMap.gherkin}`;
       const result = await askOllama(system, prompt, model);
+      saveHistory('acceptance', story.slice(0, 80), { story, format, context }, result);
       res.json({ result });
     } catch (e: any) {
       console.error('AC gen error:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── History API ──────────────────────────────────────────────────────────
+
+  // GET /api/history — last 200 entries
+  app.get('/api/history', (_req, res) => {
+    try {
+      const entries = storage.getHistory(200);
+      res.json(entries);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // DELETE /api/history/:id — delete one entry
+  app.delete('/api/history/:id', (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+      storage.deleteHistory(id);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // DELETE /api/history — clear all
+  app.delete('/api/history', (_req, res) => {
+    try {
+      storage.clearHistory();
+      res.json({ ok: true });
+    } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });

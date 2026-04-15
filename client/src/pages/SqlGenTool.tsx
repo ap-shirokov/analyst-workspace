@@ -1,15 +1,10 @@
-import { useState } from 'react';
 import { Wand2, Copy, Trash2, Database } from 'lucide-react';
-import MarkdownOutput from '@/components/MarkdownOutput';
+import CodeEditor from '@/components/CodeEditor';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useLlm } from '@/hooks/useLlm';
+import { usePersisted } from '@/hooks/usePersisted';
 import { cn } from '@/lib/utils';
-
-// Persisted state
-let _desc = 'Получить топ-10 клиентов по сумме заказов за последние 30 дней, с информацией об их последнем заказе';
-let _dialect: string = 'PostgreSQL';
-let _output = '';
 
 const DIALECTS = ['PostgreSQL', 'MySQL', 'SQLite', 'MS SQL Server', 'Oracle', 'ClickHouse'];
 
@@ -21,9 +16,9 @@ const EXAMPLES = [
 ];
 
 export default function SqlGenTool() {
-  const [desc, setDesc] = useState(_desc);
-  const [dialect, setDialect] = useState(_dialect);
-  const [output, setOutput] = useState(_output);
+  const [desc, setDesc] = usePersisted<string>('sql:desc', 'Получить топ-10 клиентов по сумме заказов за последние 30 дней, с информацией об их последнем заказе');
+  const [dialect, setDialect] = usePersisted<string>('sql:dialect', 'PostgreSQL');
+  const [output, setOutput] = usePersisted<string>('sql:output', '');
   const { toast } = useToast();
   const { loading, error, generate } = useLlm({ endpoint: '/api/generate/sql' });
 
@@ -32,7 +27,6 @@ export default function SqlGenTool() {
     try {
       const result = await generate({ description: desc, dialect });
       setOutput(result);
-      _output = result;
     } catch {}
   };
 
@@ -44,9 +38,12 @@ export default function SqlGenTool() {
   const clear = () => {
     setDesc('');
     setOutput('');
-    _desc = '';
-    _output = '';
   };
+
+  // Extract raw SQL from markdown code blocks for display
+  const displaySql = output
+    ? output.replace(/```sql\n?/gi, '').replace(/```\n?/g, '').trim()
+    : '';
 
   return (
     <div className="tool-container">
@@ -79,7 +76,7 @@ export default function SqlGenTool() {
               {DIALECTS.map((d) => (
                 <button
                   key={d}
-                  onClick={() => { setDialect(d); _dialect = d; }}
+                  onClick={() => setDialect(d)}
                   className={cn(
                     'px-2.5 py-1 rounded text-xs transition-colors',
                     dialect === d
@@ -99,7 +96,7 @@ export default function SqlGenTool() {
             <textarea
               className="code-textarea flex-1 min-h-[120px]"
               value={desc}
-              onChange={(e) => { setDesc(e.target.value); _desc = e.target.value; }}
+              onChange={(e) => setDesc(e.target.value)}
               placeholder="Опишите что должен делать запрос...
 Например: Найти пользователей, зарегистрированных в 2024 году, с более чем 5 заказами"
               spellCheck={false}
@@ -114,7 +111,7 @@ export default function SqlGenTool() {
                 {EXAMPLES.map((ex) => (
                   <button
                     key={ex}
-                    onClick={() => { setDesc(ex); _desc = ex; }}
+                    onClick={() => setDesc(ex)}
                     className="w-full text-left text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded hover:bg-muted/50 transition-colors truncate"
                   >
                     {ex}
@@ -170,10 +167,15 @@ export default function SqlGenTool() {
                 Ошибка: {error}
               </div>
             )}
-            {!loading && !error && output && (
-              <MarkdownOutput content={output} />
+            {!loading && !error && displaySql && (
+              <CodeEditor
+                value={displaySql}
+                lang="sql"
+                readOnly
+                minHeight="100%"
+              />
             )}
-            {!loading && !error && !output && (
+            {!loading && !error && !displaySql && (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
                 <Database size={32} className="opacity-20" />
                 <p className="text-sm">Опишите запрос и нажмите «Сгенерировать»</p>

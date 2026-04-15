@@ -1,33 +1,24 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { v4 as uuidv4, v1 as uuidv1 } from 'uuid';
 import { Copy, RefreshCw, Trash2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { usePersisted } from '@/hooks/usePersisted';
 import { cn } from '@/lib/utils';
-
-// Persisted state
-let _uuids: string[] = [];
-let _version: 'v4' | 'v1' = 'v4';
-let _count = 1;
 
 const generate = (version: 'v4' | 'v1', count: number): string[] =>
   Array.from({ length: count }, () => (version === 'v4' ? uuidv4() : uuidv1()));
 
 export default function UuidTool() {
-  const [uuids, setUuids] = useState<string[]>(() => {
-    if (_uuids.length === 0) _uuids = generate('v4', 1);
-    return _uuids;
-  });
-  const [version, setVersion] = useState<'v4' | 'v1'>(_version);
-  const [count, setCount] = useState(_count);
-  const [uppercase, setUppercase] = useState(false);
-  const [noBraces, setNoBraces] = useState(false);
+  const [uuids, setUuids] = usePersisted<string[]>('uuid:list', generate('v4', 1));
+  const [version, setVersion] = usePersisted<'v4' | 'v1'>('uuid:version', 'v4');
+  const [count, setCount] = usePersisted<number>('uuid:count', 1);
+  const [uppercase, setUppercase] = usePersisted<boolean>('uuid:uppercase', false);
+  const [noBraces, setNoBraces] = usePersisted<boolean>('uuid:noBraces', false);
   const { toast } = useToast();
 
   const gen = useCallback((v = version, c = count) => {
-    const result = generate(v, c);
-    setUuids(result);
-    _uuids = result;
+    setUuids(generate(v, c));
   }, [version, count]);
 
   const format = (uid: string) => {
@@ -48,27 +39,19 @@ export default function UuidTool() {
   };
 
   const addMore = () => {
-    const extra = generate(version, count);
-    const next = [...uuids, ...extra];
-    setUuids(next);
-    _uuids = next;
+    setUuids(prev => [...prev, ...generate(version, count)]);
   };
 
-  const clear = () => {
-    setUuids([]);
-    _uuids = [];
-  };
+  const clear = () => setUuids([]);
 
   const onVersionChange = (v: 'v4' | 'v1') => {
     setVersion(v);
-    _version = v;
-    gen(v, count);
+    setUuids(generate(v, count));
   };
 
   const onCountChange = (c: number) => {
     const n = Math.max(1, Math.min(100, c));
     setCount(n);
-    _count = n;
   };
 
   return (
@@ -167,7 +150,7 @@ export default function UuidTool() {
               <span className="text-[11px] text-muted-foreground w-6 text-right shrink-0 font-mono">
                 {i + 1}
               </span>
-              <span className="uuid-item flex-1 text-foreground select-all">
+              <span className="uuid-item flex-1 text-foreground select-all font-mono text-sm">
                 {format(uid)}
               </span>
               <button
