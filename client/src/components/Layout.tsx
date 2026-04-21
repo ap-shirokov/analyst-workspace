@@ -16,6 +16,8 @@ import {
   Sun,
   Layers,
   History,
+  GitBranch,
+  PenTool,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -34,6 +36,13 @@ const tools = [
       { path: '/json', label: 'JSON Formatter', icon: Braces, badge: null },
       { path: '/uuid', label: 'UUID Generator', icon: Hash, badge: null },
       { path: '/diff', label: 'Diff Checker', icon: GitCompare, badge: null },
+    ],
+  },
+  {
+    group: 'Диаграммы',
+    items: [
+      { path: '/plantuml', label: 'PlantUML Editor', icon: GitBranch, badge: 'AI' },
+      { path: '/drawio', label: 'Draw.io Editor', icon: PenTool, badge: null },
     ],
   },
   {

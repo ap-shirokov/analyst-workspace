@@ -4,7 +4,6 @@
 #  Двойной клик по файлу запускает всё необходимое.
 # ============================================================
 
-# Переходим в папку, где лежит скрипт (даже при двойном клике)
 cd "$(dirname "$0")"
 
 # ---------- цвета ----------
@@ -18,7 +17,7 @@ err()    { echo -e "  ${RED}✗ $1${RESET}"; }
 
 echo -e "${BOLD}"
 echo "╔══════════════════════════════════════╗"
-echo "║      Analyst Workspace  v2.0         ║"
+echo "║      Analyst Workspace  v3.0         ║"
 echo "╚══════════════════════════════════════╝"
 echo -e "${RESET}"
 
@@ -33,13 +32,12 @@ if ! command -v node &>/dev/null; then
   read -n1 -r -p "  Нажмите любую клавишу для выхода..."
   exit 1
 fi
-NODE_VER=$(node -v)
-ok "Node.js $NODE_VER"
+ok "Node.js $(node -v)"
 
 # ── 2. npm ─────────────────────────────────────────────────
 header "Проверка npm"
 if ! command -v npm &>/dev/null; then
-  err "npm не найден (должен идти вместе с Node.js)."
+  err "npm не найден."
   exit 1
 fi
 ok "npm $(npm -v)"
@@ -58,24 +56,41 @@ else
   ok "node_modules уже есть"
 fi
 
-# ── 4. Ollama ──────────────────────────────────────────────
+# ── 4. Java (для PlantUML) ─────────────────────────────────
+header "Java (нужна для PlantUML)"
+if ! command -v java &>/dev/null; then
+  warn "Java не найдена — PlantUML в локальном режиме работать не будет."
+  echo "  Для установки Java:"
+  echo "  https://adoptium.net  или  brew install --cask temurin"
+  echo "  (Онлайн-режим в PlantUML работает без Java)"
+else
+  JAVA_VER=$(java -version 2>&1 | head -1)
+  ok "Java найдена: $JAVA_VER"
+
+  # Проверяем plantuml.jar
+  if [ -f "plantuml.jar" ]; then
+    ok "plantuml.jar найден в папке проекта"
+  else
+    warn "plantuml.jar не найден в папке проекта."
+    echo "  Скачайте: https://plantuml.com/download"
+    echo "  Положите файл plantuml.jar рядом с start.command"
+    echo "  (Без jar локальный рендеринг недоступен; онлайн-режим работает)"
+  fi
+fi
+
+# ── 5. Ollama ──────────────────────────────────────────────
 header "Ollama"
 if ! command -v ollama &>/dev/null; then
   warn "Ollama не найдена в PATH."
-  echo "  Скачайте на https://ollama.com или установите:"
-  echo "  brew install ollama"
-  echo ""
-  echo "  Приложение запустится, но AI-генерация работать не будет"
-  echo "  до тех пор, пока Ollama не запущена."
+  echo "  Скачайте на https://ollama.com или: brew install ollama"
+  echo "  AI-генерация будет недоступна до запуска Ollama."
 else
-  # Проверяем, запущен ли сервер Ollama
   if curl -s --max-time 2 http://localhost:11434/api/tags &>/dev/null; then
     ok "Ollama уже запущена"
   else
     warn "Запускаем Ollama в фоне..."
     ollama serve &>/dev/null &
     OLLAMA_PID=$!
-    # Ждём старта
     for i in $(seq 1 10); do
       sleep 1
       if curl -s --max-time 1 http://localhost:11434/api/tags &>/dev/null; then
@@ -88,31 +103,26 @@ else
     done
   fi
 
-  # Проверяем модель
   MODEL="qwen2.5-coder:7b"
   if ollama list 2>/dev/null | grep -q "$MODEL"; then
     ok "Модель $MODEL найдена"
   else
-    warn "Модель $MODEL не найдена."
-    echo "  Запустите: ollama pull $MODEL"
+    warn "Модель $MODEL не найдена. Запустите: ollama pull $MODEL"
   fi
 fi
 
-# ── 5. Запуск приложения ───────────────────────────────────
+# ── 6. Запуск приложения ───────────────────────────────────
 header "Запуск Analyst Workspace на http://localhost:3000"
 echo ""
 
-# Функция открытия браузера после старта сервера
 open_browser() {
   sleep 4
   open "http://localhost:3000" 2>/dev/null || true
 }
 open_browser &
 
-# Запускаем dev-сервер (блокирующий вызов)
 npm run dev
 
-# Если сервер упал — держим окно открытым
 EXIT_CODE=$?
 echo ""
 if [ $EXIT_CODE -ne 0 ]; then

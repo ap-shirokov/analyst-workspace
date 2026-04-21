@@ -13,6 +13,8 @@ import OpenApiGenTool from '@/pages/OpenApiGenTool';
 import UserStoryTool from '@/pages/UserStoryTool';
 import AcceptanceTool from '@/pages/AcceptanceTool';
 import HistoryTool from '@/pages/HistoryTool';
+import PlantUmlTool from '@/pages/PlantUmlTool';
+import DrawIoTool from '@/pages/DrawIoTool';
 import NotFound from '@/pages/not-found';
 
 export default function App() {
@@ -30,6 +32,8 @@ export default function App() {
             <Route path="/openapi-gen" component={OpenApiGenTool} />
             <Route path="/user-story" component={UserStoryTool} />
             <Route path="/acceptance" component={AcceptanceTool} />
+            <Route path="/plantuml" component={PlantUmlTool} />
+            <Route path="/drawio" component={DrawIoTool} />
             <Route path="/history" component={HistoryTool} />
             <Route component={NotFound} />
           </Switch>
