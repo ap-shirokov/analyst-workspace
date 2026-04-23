@@ -1,9 +1,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Download, Maximize2, RefreshCw, FileImage, Info } from 'lucide-react';
+import { Download, Maximize2, RefreshCw, FileImage, Info, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
-// draw.io embed protocol messages
 interface DrawIoMessage {
   event: string;
   xml?: string;
@@ -11,18 +10,40 @@ interface DrawIoMessage {
   format?: string;
 }
 
+// How long to wait for draw.io 'init' before showing error/reload button
+const INIT_TIMEOUT_MS = 12000;
+
 export default function DrawIoTool() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'timeout'>('loading');
   const [exporting, setExporting] = useState(false);
-  const pendingExportRef = useRef<((xml: string) => void) | null>(null);
+  const [iframeKey, setIframeKey] = useState(0); // bump to force iframe reload
+  const pendingExportRef = useRef<((data: string) => void) | null>(null);
+  const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
 
-  // Send message to draw.io iframe
   const sendMessage = useCallback((msg: object) => {
     iframeRef.current?.contentWindow?.postMessage(JSON.stringify(msg), '*');
   }, []);
+
+  // Start the init timeout whenever iframe key changes (new load)
+  useEffect(() => {
+    setReady(false);
+    setLoadState('loading');
+
+    if (initTimerRef.current) clearTimeout(initTimerRef.current);
+    initTimerRef.current = setTimeout(() => {
+      setLoadState((prev) => {
+        if (prev === 'loading') return 'timeout';
+        return prev;
+      });
+    }, INIT_TIMEOUT_MS);
+
+    return () => {
+      if (initTimerRef.current) clearTimeout(initTimerRef.current);
+    };
+  }, [iframeKey]);
 
   // Handle messages from draw.io
   useEffect(() => {
@@ -31,20 +52,18 @@ export default function DrawIoTool() {
       let msg: DrawIoMessage;
       try {
         msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      } catch {
-        return;
-      }
+      } catch { return; }
 
       switch (msg.event) {
         case 'init':
-          // draw.io ready — configure it
+          if (initTimerRef.current) clearTimeout(initTimerRef.current);
           setReady(true);
-          setLoading(false);
+          setLoadState('ready');
           sendMessage({
             action: 'configure',
             config: {
               defaultEdgeStyle: 'orthogonalEdgeStyle',
-              ui: 'atlas',           // clean UI
+              ui: 'atlas',
               grid: 1,
               guides: 1,
               tooltips: 1,
@@ -56,21 +75,15 @@ export default function DrawIoTool() {
               pageWidth: 1169,
               pageHeight: 827,
               background: '#ffffff',
-              zoom: 1,
             },
           });
           break;
 
         case 'export':
-          // draw.io sends XML after export request
           if (msg.data && pendingExportRef.current) {
             pendingExportRef.current(msg.data);
             pendingExportRef.current = null;
           }
-          break;
-
-        case 'autosave':
-          // Autosave events — we can track unsaved changes here
           break;
 
         default:
@@ -82,63 +95,66 @@ export default function DrawIoTool() {
     return () => window.removeEventListener('message', handleMessage);
   }, [sendMessage]);
 
-  // Request XML export then trigger download
-  const downloadDiagram = useCallback(() => {
+  // ── Export helpers ─────────────────────────────────────────────────────
+  const requestExport = useCallback((
+    format: string,
+    opts: object,
+    onData: (data: string) => void,
+    errorMsg: string,
+  ) => {
     if (!ready) return;
     setExporting(true);
 
     const timeout = setTimeout(() => {
       setExporting(false);
-      toast({ title: 'Не удалось экспортировать', description: 'Попробуйте ещё раз', variant: 'destructive' });
-    }, 5000);
+      pendingExportRef.current = null;
+      toast({ title: errorMsg, variant: 'destructive' });
+    }, 8000);
 
-    pendingExportRef.current = (xmlData: string) => {
+    pendingExportRef.current = (data) => {
       clearTimeout(timeout);
       setExporting(false);
-      // xmlData comes as base64 or raw XML depending on format
-      // We request format: xml so it's raw XML string
-      const blob = new Blob([xmlData], { type: 'application/xml' });
+      onData(data);
+    };
+
+    sendMessage({ action: 'export', format, ...opts });
+  }, [ready, sendMessage, toast]);
+
+  const downloadDrawio = useCallback(() => {
+    requestExport('xml', {}, (xml) => {
+      const blob = new Blob([xml], { type: 'application/xml' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `diagram-${Date.now()}.drawio`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: 'Диаграмма скачана' });
-    };
+      toast({ title: 'Диаграмма скачана (.drawio)' });
+    }, 'Не удалось экспортировать .drawio');
+  }, [requestExport, toast]);
 
-    sendMessage({ action: 'export', format: 'xml' });
-  }, [ready, sendMessage, toast]);
-
-  // Export as PNG
   const downloadPng = useCallback(() => {
-    if (!ready) return;
-    setExporting(true);
-
-    const timeout = setTimeout(() => {
-      setExporting(false);
-      toast({ title: 'Не удалось экспортировать PNG', variant: 'destructive' });
-    }, 8000);
-
-    pendingExportRef.current = (data: string) => {
-      clearTimeout(timeout);
-      setExporting(false);
-      // data is base64 PNG
+    requestExport('png', { scale: 2, background: '#ffffff' }, (data) => {
       const link = document.createElement('a');
       link.href = `data:image/png;base64,${data}`;
       link.download = `diagram-${Date.now()}.png`;
       link.click();
       toast({ title: 'PNG скачан' });
-    };
-
-    sendMessage({ action: 'export', format: 'png', scale: 2, background: '#ffffff' });
-  }, [ready, sendMessage, toast]);
+    }, 'Не удалось экспортировать PNG');
+  }, [requestExport, toast]);
 
   const resetDiagram = useCallback(() => {
     if (!ready) return;
-    sendMessage({ action: 'load', xml: '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel>' });
-    toast({ title: 'Диаграмма очищена' });
+    sendMessage({
+      action: 'load',
+      xml: '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel>',
+    });
+    toast({ title: 'Холст очищен' });
   }, [ready, sendMessage, toast]);
+
+  const reloadIframe = () => {
+    setIframeKey((k) => k + 1);
+  };
 
   const openFullscreen = () => {
     iframeRef.current?.requestFullscreen?.();
@@ -156,42 +172,43 @@ export default function DrawIoTool() {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
-              size="sm"
-              onClick={downloadDiagram}
+              variant="outline" size="sm"
+              onClick={downloadDrawio}
               disabled={!ready || exporting}
               className="h-8 text-xs gap-1.5"
-              title="Скачать файл .drawio (можно открыть в draw.io Desktop или draw.io онлайн)"
+              title="Скачать файл .drawio"
             >
-              <Download size={13} />
-              .drawio
+              <Download size={13} /> .drawio
             </Button>
             <Button
-              variant="outline"
-              size="sm"
+              variant="outline" size="sm"
               onClick={downloadPng}
               disabled={!ready || exporting}
               className="h-8 text-xs gap-1.5"
             >
-              <FileImage size={13} />
-              PNG
+              <FileImage size={13} /> PNG
             </Button>
             <Button
-              variant="ghost"
-              size="sm"
+              variant="ghost" size="sm"
               onClick={resetDiagram}
               disabled={!ready}
               className="h-8 text-xs gap-1.5"
               title="Очистить холст"
             >
-              <RefreshCw size={13} />
-              Очистить
+              <RefreshCw size={13} /> Очистить
             </Button>
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={openFullscreen}
+              variant="ghost" size="sm"
+              onClick={reloadIframe}
               className="h-8 text-xs gap-1.5"
+              title="Перезагрузить редактор"
+            >
+              <RotateCcw size={13} />
+            </Button>
+            <Button
+              variant="ghost" size="sm"
+              onClick={openFullscreen}
+              className="h-8 text-xs"
             >
               <Maximize2 size={13} />
             </Button>
@@ -202,42 +219,58 @@ export default function DrawIoTool() {
         <div className="mt-2 flex items-start gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border">
           <Info size={13} className="text-muted-foreground shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground">
-            Редактор работает через <strong>embed.diagrams.net</strong> — нужен интернет для загрузки редактора.
-            Данные диаграммы хранятся только в браузере, ничего не отправляется в облако.
-            Кнопка <strong>.drawio</strong> скачивает файл, который можно открыть в&nbsp;
+            Редактор загружается с <strong>embed.diagrams.net</strong> — нужен интернет.
+            Данные диаграммы хранятся только в браузере.
+            Кнопка <strong>.drawio</strong> скачивает файл, совместимый с{' '}
             <a href="https://www.diagrams.net" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
               diagrams.net
-            </a> или десктопном приложении.
+            </a>.
           </p>
         </div>
       </div>
 
       {/* iframe container */}
       <div className="flex-1 relative overflow-hidden min-h-0">
-        {loading && (
+
+        {/* Loading overlay */}
+        {loadState === 'loading' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background z-10 text-muted-foreground">
             <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full spinner" />
             <p className="text-sm">Загрузка редактора Draw.io...</p>
+            <p className="text-xs opacity-60">Требуется подключение к интернету</p>
           </div>
         )}
+
+        {/* Timeout overlay — shown if init never fires */}
+        {loadState === 'timeout' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-background z-10 text-muted-foreground">
+            <div className="text-center space-y-1">
+              <p className="text-sm font-medium text-foreground">Редактор не загрузился</p>
+              <p className="text-xs max-w-[280px] text-center">
+                Проверьте подключение к интернету — редактор загружается с embed.diagrams.net
+              </p>
+            </div>
+            <Button onClick={reloadIframe} className="gap-2">
+              <RotateCcw size={14} /> Перезагрузить
+            </Button>
+          </div>
+        )}
+
+        {/* Export spinner */}
         {exporting && (
           <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-2 rounded-md bg-card border border-border shadow-lg z-20 text-xs">
             <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full spinner" />
             Экспорт...
           </div>
         )}
+
         <iframe
+          key={iframeKey}
           ref={iframeRef}
           src="https://embed.diagrams.net/?embed=1&ui=atlas&spin=1&proto=json&configure=1&noSaveBtn=1&noExitBtn=1&saveAndExit=0&lang=ru"
           className="w-full h-full border-0"
           title="Draw.io Editor"
           allow="fullscreen"
-          onLoad={() => {
-            // iframe loaded — wait for 'init' message from draw.io
-            setTimeout(() => {
-              if (!ready) setLoading(false);
-            }, 8000);
-          }}
         />
       </div>
     </div>
